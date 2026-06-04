@@ -24,7 +24,7 @@ class MolecularFramework(Base):
         nullable=False,
     )
 
-    classifications = relationship(
+    classification = relationship(
         "Classification",
         back_populates="molecular_framework",
     )

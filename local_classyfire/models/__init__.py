@@ -14,6 +14,7 @@ from .ClassificationSubstituent import ClassificationSubstituent
 from .ClassyFireQuery import ClassyFireQuery
 from .ExternalDescriptor import ExternalDescriptor
 from .ExternalDescriptorAnnotation import ExternalDescriptorAnnotation
+from .ExternalDescriptorAnnotationLink import ExternalDescriptorAnnotationLink
 from .IntermediateNode import IntermediateNode
 from .MolecularFramework import MolecularFramework
 from .PredictedChebiTerm import PredictedChebiTerm
