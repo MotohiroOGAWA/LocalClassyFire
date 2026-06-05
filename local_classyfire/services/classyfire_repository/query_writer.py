@@ -3,43 +3,27 @@ from __future__ import annotations
 from datetime import datetime
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from local_classyfire.models import ClassyFireQuery, Classification
-
 from .utils import update_existing_columns
 
 
 class ClassyFireQueryWriter:
-    """
-    Write query history/status into ClassyFireQuery.
-
-    This replaces the need for a separate NotFoundCompound table.
-    """
+    """Write query result into ClassyFireQuery."""
 
     @classmethod
-    def get_or_create_query(
+    def get_query(
         cls,
         session: Session,
         inchikey: str,
-    ) -> ClassyFireQuery:
-        query = session.execute(
+    ) -> ClassyFireQuery | None:
+        return session.execute(
             select(ClassyFireQuery).where(
                 ClassyFireQuery.inchikey == inchikey,
             )
         ).scalar_one_or_none()
-
-        if query is not None:
-            return query
-
-        query = ClassyFireQuery(
-            inchikey=inchikey,
-        )
-
-        session.add(query)
-        session.flush()
-
-        return query
 
     @classmethod
     def mark_success(
@@ -49,30 +33,21 @@ class ClassyFireQueryWriter:
         inchikey: str,
         classification: Classification,
         smiles: str | None = None,
-        inchi: str | None = None,
     ) -> ClassyFireQuery:
-        query = cls.get_or_create_query(
+        values = {
+            "inchikey": inchikey,
+            "smiles": smiles,
+            "classification_id": classification.classification_id,
+            "is_found": True,
+            "message": None,
+            "updated_at": datetime.now(),
+        }
+
+        return cls._insert_or_update_own_query(
             session=session,
             inchikey=inchikey,
+            values=values,
         )
-
-        update_existing_columns(
-            query,
-            {
-                "inchikey": inchikey,
-                "smiles": smiles,
-                "inchi": inchi,
-                "classification_id": classification.classification_id,
-                "query_status": "success",
-                "message": None,
-                "updated_at": datetime.now(),
-            },
-            skip_none=False,
-        )
-
-        session.flush()
-
-        return query
 
     @classmethod
     def mark_not_found(
@@ -82,26 +57,19 @@ class ClassyFireQueryWriter:
         inchikey: str,
         message: str,
     ) -> ClassyFireQuery:
-        query = cls.get_or_create_query(
+        values = {
+            "inchikey": inchikey,
+            "classification_id": None,
+            "is_found": False,
+            "message": message,
+            "updated_at": datetime.now(),
+        }
+
+        return cls._insert_or_update_own_query(
             session=session,
             inchikey=inchikey,
+            values=values,
         )
-
-        update_existing_columns(
-            query,
-            {
-                "inchikey": inchikey,
-                "classification_id": None,
-                "query_status": "not_found",
-                "message": message,
-                "updated_at": datetime.now(),
-            },
-            skip_none=False,
-        )
-
-        session.flush()
-
-        return query
 
     @classmethod
     def mark_error(
@@ -111,23 +79,69 @@ class ClassyFireQueryWriter:
         inchikey: str,
         message: str,
     ) -> ClassyFireQuery:
-        query = cls.get_or_create_query(
+        values = {
+            "inchikey": inchikey,
+            "classification_id": None,
+            "is_found": False,
+            "message": message,
+            "updated_at": datetime.now(),
+        }
+
+        return cls._insert_or_update_own_query(
+            session=session,
+            inchikey=inchikey,
+            values=values,
+        )
+
+    @classmethod
+    def _insert_or_update_own_query(
+        cls,
+        session: Session,
+        *,
+        inchikey: str,
+        values: dict,
+    ) -> ClassyFireQuery:
+        """Insert a complete query record or update an existing one.
+
+        This method does not create an empty ClassyFireQuery.
+        If another process inserts the same InChIKey first, this method does
+        not overwrite it in the insert path. It re-fetches the row afterward.
+        """
+
+        query = cls.get_query(
             session=session,
             inchikey=inchikey,
         )
 
-        update_existing_columns(
-            query,
-            {
-                "inchikey": inchikey,
-                "classification_id": None,
-                "query_status": "error",
-                "message": message,
-                "updated_at": datetime.now(),
-            },
-            skip_none=False,
+        if query is not None:
+            update_existing_columns(
+                query,
+                values,
+                skip_none=False,
+            )
+            session.flush()
+
+            return query
+
+        try:
+            with session.begin_nested():
+                query = ClassyFireQuery(**values)
+                session.add(query)
+                session.flush()
+
+        except IntegrityError:
+            # Another process created the record first.
+            # Do not overwrite it here.
+            pass
+
+        query = cls.get_query(
+            session=session,
+            inchikey=inchikey,
         )
 
-        session.flush()
+        if query is None:
+            raise RuntimeError(
+                f"Failed to insert or fetch ClassyFireQuery: {inchikey}"
+            )
 
         return query

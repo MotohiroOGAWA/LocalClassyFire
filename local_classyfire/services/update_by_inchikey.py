@@ -5,7 +5,8 @@ from sqlalchemy.orm import Session
 
 from local_classyfire.models import ClassyFireQuery
 
-from .classyfire_client import fetch_classyfire_result
+from .classyfire_client import fetch_classyfire_result, ClassyFireNotFoundError, ClassyFireRequestError
+from .classyfire_repository.query_writer import ClassyFireQueryWriter
 from .classyfire_repository import ClassyFireRepository
 
 def get_classyfire_query(
@@ -70,10 +71,27 @@ def update_classyfire_by_inchikey(
         if not query.is_found and not retry_failed:
             return None
 
-    result = fetch_classyfire_result(
-        inchikey=inchikey,
-        timeout=timeout,
-    )
+    try:
+        result = fetch_classyfire_result(
+            inchikey=inchikey,
+            timeout=timeout,
+        )
+
+    except ClassyFireNotFoundError as error:
+        ClassyFireQueryWriter.mark_not_found(
+            session=session,
+            inchikey=inchikey,
+            message=str(error),
+        )
+        return None
+
+    except ClassyFireRequestError as error:
+        ClassyFireQueryWriter.mark_error(
+            session=session,
+            inchikey=inchikey,
+            message=str(error),
+        )
+        return None
 
     classification = ClassyFireRepository.upsert_result(
         session=session,
@@ -101,6 +119,8 @@ if __name__ == "__main__":
             "BSYNRYMUTXBXSQ-UHFFFAOYSA-N",
             "AAABYGXUNQSIIU-UHFFFAOYSA-N",
             "AAAAURPNVGZDQV-UHFFFAOYSA-N",
+            "AAAAWQOPBUPWEV-UHFFFAOYSA-N",
+            "AAARPXDXUKJEIC-UHFFFAOYSA-N",
         ]
         for inchikey in inchikey_list:
             try:

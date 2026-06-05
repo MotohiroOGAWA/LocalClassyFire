@@ -17,12 +17,7 @@ from .utils import get_or_create, update_existing_columns
 
 
 class ClassificationWriter:
-    """
-    Write Classification and MolecularFramework.
-
-    This class does not update ClassyFireQuery status.
-    Query status is handled by ClassyFireQueryWriter.
-    """
+    """Write Classification and MolecularFramework."""
 
     @classmethod
     def upsert_classification(
@@ -30,7 +25,7 @@ class ClassificationWriter:
         session: Session,
         result: ClassyFireResult,
     ) -> Classification:
-        classification = cls._get_or_create_classification(
+        existing_classification = cls._get_existing_classification(
             session=session,
             inchikey=result.inchikey,
         )
@@ -40,56 +35,52 @@ class ClassificationWriter:
             framework_name=result.molecular_framework,
         )
 
-        update_existing_columns(
-            classification,
-            {
-                "kingdom": cls._node_name(result.kingdom),
-                "superclass": cls._node_name(result.superclass),
-                "class_name": cls._node_name(result.class_node),
-                "subclass": cls._node_name(result.subclass),
-                "direct_parent": cls._node_name(result.direct_parent),
-                "molecular_framework_id": (
-                    molecular_framework.molecular_framework_id
-                    if molecular_framework is not None
-                    else None
-                ),
-                "description": result.description,
-                "classification_version": result.classification_version,
-            },
-            skip_none=False,
-        )
+        values = {
+            "kingdom": cls._node_name(result.kingdom),
+            "superclass": cls._node_name(result.superclass),
+            "class_name": cls._node_name(result.class_node),
+            "subclass": cls._node_name(result.subclass),
+            "direct_parent": cls._node_name(result.direct_parent),
+            "molecular_framework_id": (
+                molecular_framework.molecular_framework_id
+                if molecular_framework is not None
+                else None
+            ),
+            "description": result.description,
+            "classification_version": result.classification_version,
+        }
 
+        if existing_classification is not None:
+            update_existing_columns(
+                existing_classification,
+                values,
+                skip_none=False,
+            )
+            session.flush()
+            return existing_classification
+
+        classification = Classification(**values)
+        session.add(classification)
         session.flush()
 
         return classification
 
-    @staticmethod
-    def _node_name(node: ClassificationNodeData | None) -> str | None:
-        if node is None:
-            return None
-
-        return node.name
-
     @classmethod
-    def _get_or_create_classification(
+    def _get_existing_classification(
         cls,
         session: Session,
         inchikey: str,
-    ) -> Classification:
+    ) -> Classification | None:
         query = session.execute(
             select(ClassyFireQuery).where(
                 ClassyFireQuery.inchikey == inchikey,
             )
         ).scalar_one_or_none()
 
-        if query is not None and query.classification is not None:
-            return query.classification
+        if query is None:
+            return None
 
-        classification = Classification()
-        session.add(classification)
-        session.flush()
-
-        return classification
+        return query.classification
 
     @classmethod
     def _get_or_create_molecular_framework(
@@ -104,4 +95,12 @@ class ClassificationWriter:
             session=session,
             model=MolecularFramework,
             lookup={"framework_name": framework_name},
+            create_values={"framework_name": framework_name},
         )
+
+    @staticmethod
+    def _node_name(node: ClassificationNodeData | None) -> str | None:
+        if node is None:
+            return None
+
+        return node.name

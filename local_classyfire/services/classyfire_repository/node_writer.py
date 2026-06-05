@@ -64,6 +64,9 @@ class NodeWriter:
                 node=node,
             )
 
+            if stored_node is None:
+                continue
+
             link = ClassificationIntermediateNode(
                 classification_id=classification.classification_id,
                 intermediate_node_id=stored_node.intermediate_node_id,
@@ -98,6 +101,9 @@ class NodeWriter:
                 session=session,
                 node=node,
             )
+
+            if stored_node is None:
+                continue
 
             link = ClassificationAlternativeParent(
                 classification_id=classification.classification_id,
@@ -134,6 +140,9 @@ class NodeWriter:
                 node=node,
             )
 
+            if stored_node is None:
+                continue
+
             link = ClassificationAncestor(
                 classification_id=classification.classification_id,
                 ancestor_id=stored_node.ancestor_id,
@@ -158,13 +167,17 @@ class NodeWriter:
     def _get_or_create_intermediate_node(
         cls,
         session: Session,
-        node: ClassificationNodeData,
-    ) -> IntermediateNode:
+        node: ClassificationNodeData | None,
+    ) -> IntermediateNode | None:
+        if node is None:
+            return None
+
         return get_or_create(
             session=session,
             model=IntermediateNode,
             lookup={"node_name": node.name},
-            defaults={
+            create_values={
+                "node_name": node.name,
                 "description": node.description,
                 "chemont_id": node.chemont_id,
                 "url": node.url,
@@ -175,13 +188,17 @@ class NodeWriter:
     def _get_or_create_alternative_parent(
         cls,
         session: Session,
-        node: ClassificationNodeData,
-    ) -> AlternativeParent:
+        node: ClassificationNodeData | None,
+    ) -> AlternativeParent | None:
+        if node is None:
+            return None
+
         return get_or_create(
             session=session,
             model=AlternativeParent,
             lookup={"parent_name": node.name},
-            defaults={
+            create_values={
+                "parent_name": node.name,
                 "description": node.description,
                 "chemont_id": node.chemont_id,
                 "url": node.url,
@@ -192,21 +209,27 @@ class NodeWriter:
     def _get_or_create_ancestor(
         cls,
         session: Session,
-        node: ClassificationNodeData,
-    ) -> Ancestor:
+        node: ClassificationNodeData | None,
+    ) -> Ancestor | None:
+        if node is None:
+            return None
+
         return get_or_create(
             session=session,
             model=Ancestor,
             lookup={"name": node},
+            create_values={
+                "name": node,
+            },
         )
-    
+
     @classmethod
     def upsert_classification_nodes_from_result(
         cls,
         session: Session,
         result: ClassyFireResult,
     ) -> None:
-        """Store all classification nodes into ClassificationNode dictionary table."""
+        """Store major classification nodes into ClassificationNode dictionary table."""
 
         cls._get_or_create_classification_node(
             session=session,
@@ -251,7 +274,9 @@ class NodeWriter:
                 "classification_type": classification_type,
                 "name": node.name,
             },
-            defaults={
+            create_values={
+                "classification_type": classification_type,
+                "name": node.name,
                 "description": node.description,
                 "chemont_id": node.chemont_id,
                 "url": node.url,

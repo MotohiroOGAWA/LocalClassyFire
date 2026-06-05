@@ -63,6 +63,10 @@ class DescriptorWriter:
                 "source": descriptor.source,
                 "source_id": descriptor.source_id,
             },
+            create_values={
+                "source": descriptor.source,
+                "source_id": descriptor.source_id,
+            },
         )
 
     @classmethod
@@ -75,10 +79,9 @@ class DescriptorWriter:
         links: list[ExternalDescriptorAnnotationLink] = []
 
         for annotation in annotations:
-            stored_annotation = get_or_create(
+            stored_annotation = cls._get_or_create_external_descriptor_annotation(
                 session=session,
-                model=ExternalDescriptorAnnotation,
-                lookup={"annotation": annotation},
+                annotation=annotation,
             )
 
             link = ExternalDescriptorAnnotationLink(
@@ -95,4 +98,21 @@ class DescriptorWriter:
             parent=external_descriptor,
             relationship_name="annotation_links",
             new_items=links,
+        )
+
+    @classmethod
+    def _get_or_create_external_descriptor_annotation(
+        cls,
+        session: Session,
+        annotation: str,
+    ) -> ExternalDescriptorAnnotation:
+        return get_or_create(
+            session=session,
+            model=ExternalDescriptorAnnotation,
+            lookup={
+                "annotation": annotation,
+            },
+            create_values={
+                "annotation": annotation,
+            },
         )
