@@ -22,8 +22,6 @@ class ClassyFireQueryWriter:
         cls,
         session: Session,
         inchikey: str,
-        *,
-        default_status: str = "skipped",
     ) -> ClassyFireQuery:
         query = session.execute(
             select(ClassyFireQuery).where(
@@ -36,7 +34,6 @@ class ClassyFireQueryWriter:
 
         query = ClassyFireQuery(
             inchikey=inchikey,
-            status=default_status,
         )
 
         session.add(query)

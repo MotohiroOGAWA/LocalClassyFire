@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, func
+from sqlalchemy import DateTime, ForeignKey, Boolean, Integer, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .base import Base
@@ -13,14 +13,6 @@ class ClassyFireQuery(Base):
     """Cache table for ClassyFire query results by InChIKey.
 
     This table stores both successful and failed ClassyFire queries.
-
-    Status examples
-    ---------------
-    - found
-    - not_found
-    - api_error
-    - invalid_inchikey
-    - skipped
     """
 
     __tablename__ = "ClassyFireQuery"
@@ -38,8 +30,8 @@ class ClassyFireQuery(Base):
         nullable=False,
     )
 
-    inchi: Mapped[str | None] = mapped_column(
-        "InChI",
+    smiles: Mapped[str | None] = mapped_column(
+        "SMILES",
         Text,
         nullable=True,
     )
@@ -54,10 +46,12 @@ class ClassyFireQuery(Base):
         nullable=True,
     )
 
-    status: Mapped[str] = mapped_column(
-        "Status",
-        String(50),
+    is_found: Mapped[bool] = mapped_column(
+        "IsFound",
+        Boolean,
         nullable=False,
+        default=False,
+        server_default="0",
     )
 
     message: Mapped[str | None] = mapped_column(

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import requests
+import time
 
 from .classyfire_result import ClassyFireResult
 
@@ -37,6 +38,7 @@ def fetch_classyfire_json(
         raise ClassyFireNotFoundError(
             "No result returned from ClassyFire API."
         )
+    time.sleep(5)  # Sleep to avoid hitting API rate limits
 
     return data
 

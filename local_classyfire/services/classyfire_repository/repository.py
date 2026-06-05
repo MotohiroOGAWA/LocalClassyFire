@@ -50,6 +50,11 @@ class ClassyFireRepository:
             result=result,
         )
 
+        NodeWriter.upsert_classification_nodes_from_result(
+            session=session,
+            result=result,
+        )
+
         NodeWriter.replace_all_nodes(
             session=session,
             classification=classification,
@@ -77,7 +82,6 @@ class ClassyFireRepository:
             inchikey=result.inchikey,
             classification=classification,
             smiles=result.smiles,
-            inchi=result.inchi,
         )
 
         session.flush()
@@ -106,8 +110,7 @@ class ClassyFireRepository:
             Only local DB records are used.
 
         retry_failed:
-            False means InChIKeys with query_status='not_found' or 'error'
-            are not fetched again.
+            False means InChIKeys with is_found=False are not fetched again.
         """
         unique_keys = sorted(
             {
@@ -117,7 +120,7 @@ class ClassyFireRepository:
             }
         )
 
-        cache_status = ClassyFireCacheChecker.split_by_query_status(
+        cache_status = ClassyFireCacheChecker.split_by_found_status(
             session=session,
             inchikey_list=unique_keys,
             retry_failed=retry_failed,

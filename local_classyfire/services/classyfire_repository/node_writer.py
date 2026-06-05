@@ -9,9 +9,13 @@ from local_classyfire.models import (
     ClassificationAlternativeParent,
     ClassificationAncestor,
     ClassificationIntermediateNode,
+    ClassificationNode,
     IntermediateNode,
 )
-from local_classyfire.services.classyfire_result import ClassificationNodeData
+from local_classyfire.services.classyfire_result import (
+    ClassificationNodeData,
+    ClassyFireResult,
+)
 
 from .utils import get_or_create, replace_relationship_items, update_existing_columns
 
@@ -193,5 +197,63 @@ class NodeWriter:
         return get_or_create(
             session=session,
             model=Ancestor,
-            lookup={"name": node.name},
+            lookup={"name": node},
+        )
+    
+    @classmethod
+    def upsert_classification_nodes_from_result(
+        cls,
+        session: Session,
+        result: ClassyFireResult,
+    ) -> None:
+        """Store all classification nodes into ClassificationNode dictionary table."""
+
+        cls._get_or_create_classification_node(
+            session=session,
+            classification_type="kingdom",
+            node=result.kingdom,
+        )
+        cls._get_or_create_classification_node(
+            session=session,
+            classification_type="superclass",
+            node=result.superclass,
+        )
+        cls._get_or_create_classification_node(
+            session=session,
+            classification_type="class",
+            node=result.class_node,
+        )
+        cls._get_or_create_classification_node(
+            session=session,
+            classification_type="subclass",
+            node=result.subclass,
+        )
+        cls._get_or_create_classification_node(
+            session=session,
+            classification_type="direct_parent",
+            node=result.direct_parent,
+        )
+
+    @classmethod
+    def _get_or_create_classification_node(
+        cls,
+        session: Session,
+        classification_type: str,
+        node: ClassificationNodeData | None,
+    ) -> ClassificationNode | None:
+        if node is None:
+            return None
+
+        return get_or_create(
+            session=session,
+            model=ClassificationNode,
+            lookup={
+                "classification_type": classification_type,
+                "name": node.name,
+            },
+            defaults={
+                "description": node.description,
+                "chemont_id": node.chemont_id,
+                "url": node.url,
+            },
         )

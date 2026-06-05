@@ -8,14 +8,6 @@ from local_classyfire.models import ClassyFireQuery
 from .classyfire_client import fetch_classyfire_result
 from .classyfire_repository import ClassyFireRepository
 
-
-SKIP_STATUSES = {
-    "success",
-    "not_found",
-    "error",
-}
-
-
 def get_classyfire_query(
     session: Session,
     inchikey: str,
@@ -56,7 +48,6 @@ def update_classyfire_by_inchikey(
     timeout:
         Request timeout in seconds.
     retry_failed:
-        If False, records with query_status='not_found' or 'error' are reused.
         If True, failed records are fetched again.
 
     Returns
@@ -73,10 +64,10 @@ def update_classyfire_by_inchikey(
     )
 
     if query is not None:
-        if query.query_status == "success":
+        if query.is_found:
             return query.classification_id
 
-        if query.query_status in {"not_found", "error"} and not retry_failed:
+        if not query.is_found and not retry_failed:
             return None
 
     result = fetch_classyfire_result(
@@ -94,6 +85,7 @@ def update_classyfire_by_inchikey(
 
 if __name__ == "__main__":
     from .session import create_sqlite_engine, create_session_factory, create_tables
+    import time
 
     engine = create_sqlite_engine(
         "db/classyfire_cache.sqlite",
@@ -102,23 +94,30 @@ if __name__ == "__main__":
     create_tables(engine)
     SessionFactory = create_session_factory(engine)
 
+
     with SessionFactory() as session:
-        inchikey = "BSYNRYMUTXBXSQ-UHFFFAOYSA-N"  # Caffeine
+        inchikey_list = [
+            "AAABMNXUOFPYQK-WMBKCNCTSA-N",
+            "BSYNRYMUTXBXSQ-UHFFFAOYSA-N",
+            "AAABYGXUNQSIIU-UHFFFAOYSA-N",
+            "AAAAURPNVGZDQV-UHFFFAOYSA-N",
+        ]
+        for inchikey in inchikey_list:
+            try:
+                classification_id = update_classyfire_by_inchikey(
+                    session=session,
+                    inchikey=inchikey,
+                    timeout=30,
+                    retry_failed=False,
+                )
+                session.commit()
 
-        try:
-            classification_id = update_classyfire_by_inchikey(
-                session=session,
-                inchikey=inchikey,
-                timeout=30,
-                retry_failed=False,
-            )
-            session.commit()
+            except Exception:
+                session.rollback()
+                raise
 
-        except Exception:
-            session.rollback()
-            raise
-
-        if classification_id is None:
-            print(f"Skipped or not found: {inchikey}")
-        else:
-            print(f"Updated classification ID: {classification_id}")
+            if classification_id is None:
+                print(f"Skipped or not found: {inchikey}")
+            else:
+                print(f"Updated classification ID: {classification_id}")
+            

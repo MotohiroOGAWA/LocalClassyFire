@@ -63,13 +63,11 @@ class ExternalDescriptorData:
             ],
         )
 
-
 @dataclass(frozen=True)
 class ClassyFireResult:
     """Parsed ClassyFire API result for one InChIKey."""
 
     inchikey: str
-    inchi: str | None = None
     smiles: str | None = None
 
     kingdom: ClassificationNodeData | None = None
@@ -80,7 +78,7 @@ class ClassyFireResult:
 
     intermediate_nodes: list[ClassificationNodeData] = field(default_factory=list)
     alternative_parents: list[ClassificationNodeData] = field(default_factory=list)
-    ancestors: list[ClassificationNodeData] = field(default_factory=list)
+    ancestors: list[str] = field(default_factory=list)
 
     molecular_framework: str | None = None
     substituents: list[str] = field(default_factory=list)
@@ -102,13 +100,10 @@ class ClassyFireResult:
         data: dict[str, Any],
     ) -> ClassyFireResult:
         """Create ClassyFireResult from raw ClassyFire API JSON."""
-
-        inchi_value = _extract_first_inchi(data)
         smiles_value = data.get("smiles")
 
         return cls(
             inchikey=inchikey,
-            inchi=inchi_value,
             smiles=smiles_value,
 
             kingdom=ClassificationNodeData.from_dict(data.get("kingdom")),
@@ -133,14 +128,9 @@ class ClassyFireResult:
                 )
                 if node is not None
             ],
-            ancestors=[
-                node
-                for node in (
-                    ClassificationNodeData.from_dict(item)
-                    for item in _as_dict_list(data.get("ancestors"))
-                )
-                if node is not None
-            ],
+            ancestors=_as_str_list(
+                data.get("ancestors")
+            ),
 
             molecular_framework=data.get("molecular_framework"),
             substituents=_as_str_list(data.get("substituents")),

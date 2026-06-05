@@ -17,14 +17,19 @@ class CacheStatus:
 
 class ClassyFireCacheChecker:
     """
-    Check local ClassyFireQuery records before accessing ClassyFire API.
+    Check local ClassyFireQuery records before accessing the ClassyFire API.
+
+    is_found=True:
+        The compound was found in the local cache.
+
+    is_found=False:
+        The compound was already queried but was not found, failed, skipped,
+        or otherwise did not produce a classification.
+        Details should be stored in ClassyFireQuery.message.
     """
 
-    SUCCESS_STATUS = "success"
-    FAILED_STATUSES = {"not_found", "error"}
-
     @classmethod
-    def split_by_query_status(
+    def split_by_found_status(
         cls,
         session: Session,
         inchikey_list: list[str],
@@ -42,15 +47,15 @@ class ClassyFireCacheChecker:
 
         statement = select(
             ClassyFireQuery.inchikey,
-            ClassyFireQuery.query_status,
+            ClassyFireQuery.is_found,
         ).where(
             ClassyFireQuery.inchikey.in_(unique_keys)
         )
 
         rows = session.execute(statement).all()
 
-        status_by_inchikey = {
-            row.inchikey: row.query_status
+        is_found_by_inchikey = {
+            row.inchikey: row.is_found
             for row in rows
         }
 
@@ -59,13 +64,13 @@ class ClassyFireCacheChecker:
         keys_to_fetch: list[str] = []
 
         for inchikey in unique_keys:
-            status = status_by_inchikey.get(inchikey)
+            is_found = is_found_by_inchikey.get(inchikey)
 
-            if status == cls.SUCCESS_STATUS:
+            if is_found is True:
                 existing_success_set.add(inchikey)
                 continue
 
-            if status in cls.FAILED_STATUSES:
+            if is_found is False:
                 existing_failed_set.add(inchikey)
 
                 if retry_failed:
@@ -73,13 +78,33 @@ class ClassyFireCacheChecker:
 
                 continue
 
-            # No ClassyFireQuery record exists, or status is unknown/pending.
+            # No ClassyFireQuery record exists.
             keys_to_fetch.append(inchikey)
 
         return CacheStatus(
             existing_success_set=existing_success_set,
             existing_failed_set=existing_failed_set,
             keys_to_fetch=keys_to_fetch,
+        )
+
+    @classmethod
+    def split_by_query_status(
+        cls,
+        session: Session,
+        inchikey_list: list[str],
+        *,
+        retry_failed: bool = False,
+    ) -> CacheStatus:
+        """
+        Backward-compatible alias.
+
+        Prefer split_by_found_status() in new code.
+        """
+
+        return cls.split_by_found_status(
+            session=session,
+            inchikey_list=inchikey_list,
+            retry_failed=retry_failed,
         )
 
     @staticmethod
