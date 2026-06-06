@@ -13,6 +13,24 @@ class ClassyFireNotFoundError(Exception):
 class ClassyFireRequestError(Exception):
     """Raised when ClassyFire request failed."""
 
+def normalize_inchikey(
+    inchikey: str | None,
+) -> str | None:
+    if inchikey is None:
+        return None
+
+    normalized = str(inchikey).strip()
+
+    if not normalized:
+        return None
+
+    if normalized.startswith("InChIKey="):
+        normalized = normalized.removeprefix("InChIKey=").strip()
+
+    if not normalized:
+        return None
+
+    return normalized
 
 def fetch_classyfire_json(
     inchikey: str,
@@ -38,6 +56,8 @@ def fetch_classyfire_json(
         raise ClassyFireNotFoundError(
             "No result returned from ClassyFire API."
         )
+    if 'inchikey' in data:
+        data['inchikey'] = normalize_inchikey(data['inchikey'])
     time.sleep(5)  # Sleep to avoid hitting API rate limits
 
     return data
@@ -52,7 +72,6 @@ def fetch_classyfire_result(
     data = fetch_classyfire_json(inchikey, timeout=timeout)
 
     return ClassyFireResult.from_api_json(
-        inchikey=inchikey,
         data=data,
     )
 
@@ -60,11 +79,11 @@ if __name__ == "__main__":
     result = fetch_classyfire_result("AAAFZMYJJHWUPN-TXICZTDVSA-N")
 
     print(result.kingdom.name if result.kingdom else None)
-    print(result.class_node.name if result.class_node else None)
+    print(result.class_.name if result.class_ else None)
     print(result.substituents)
     
     result = fetch_classyfire_result("AADVCYNFEREWOS-OBRABYBLSA-N")
 
     print(result.kingdom.name if result.kingdom else None)
-    print(result.class_node.name if result.class_node else None)
+    print(result.class_.name if result.class_ else None)
     print(result.substituents)

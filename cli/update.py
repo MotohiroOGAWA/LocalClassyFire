@@ -3,12 +3,12 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from local_classyfire.services.session import (
+from mnt.app.db.trash.services.session import (
     create_session_factory,
     create_sqlite_engine,
     create_tables,
 )
-from local_classyfire.services.update_by_inchikey import (
+from mnt.app.db.trash.services.update_by_inchikey import (
     update_classyfire_by_inchikey,
 )
 

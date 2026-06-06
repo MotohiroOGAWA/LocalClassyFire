@@ -7,9 +7,21 @@ from .base import Base
 
 
 class MolecularFramework(Base):
-    """Dictionary table for molecular framework names."""
+    """ClassyFire molecular framework.
+
+    Examples
+    --------
+    Aromatic heteropolycyclic compounds
+    """
 
     __tablename__ = "MolecularFramework"
+
+    __table_args__ = (
+        UniqueConstraint(
+            "Name",
+            name="UQ_MolecularFramework_Name",
+        ),
+    )
 
     molecular_framework_id: Mapped[int] = mapped_column(
         "MolecularFrameworkID",
@@ -18,20 +30,13 @@ class MolecularFramework(Base):
         autoincrement=True,
     )
 
-    framework_name: Mapped[str] = mapped_column(
-        "FrameworkName",
+    name: Mapped[str] = mapped_column(
+        "Name",
         String(255),
         nullable=False,
     )
 
-    classification = relationship(
-        "Classification",
+    queries = relationship(
+        "ClassyFireQuery",
         back_populates="molecular_framework",
-    )
-
-    __table_args__ = (
-        UniqueConstraint(
-            "FrameworkName",
-            name="uq_molecular_framework_framework_name",
-        ),
     )
