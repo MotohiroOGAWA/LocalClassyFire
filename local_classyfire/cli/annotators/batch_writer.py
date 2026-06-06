@@ -13,6 +13,7 @@ from .text_records import (
     IdentifierHit,
     find_identifier_in_line,
 )
+from local_classyfire.cli.progress import progress_iter
 from local_classyfire.cli.lookup_runner import run_lookup
 
 
@@ -47,9 +48,9 @@ class PendingAnnotationBatch:
 
 def annotate_records_streaming(
     *,
-    records: Iterable[list[str]],
-    output_stream: TextIO,
-    db_path: str | Path,
+    records,
+    output_stream,
+    db_path,
     preferred_identifier: str,
     batch_size: int = 100,
     delimiter: str,
@@ -57,19 +58,19 @@ def annotate_records_streaming(
     request_interval_seconds: float = 5.0,
     retry_missing: bool = False,
     include_ids: bool = False,
+    show_progress: bool = True,
 ) -> None:
-    """Annotate records in batches and write them incrementally.
-
-    This function does not look up classification for each record immediately.
-    It keeps records until the number of found identifiers reaches batch_size.
-    """
-
     if batch_size <= 0:
         raise ValueError("batch_size must be greater than 0.")
 
     batch = PendingAnnotationBatch()
 
-    for record_lines in records:
+    for record_lines in progress_iter(
+        records,
+        desc="Reading records",
+        unit="record",
+        enabled=show_progress,
+    ):
         pending_record = PendingRecord(
             lines=record_lines,
             hit=find_identifier_hit_in_record(
@@ -90,6 +91,7 @@ def annotate_records_streaming(
                 request_interval_seconds=request_interval_seconds,
                 retry_missing=retry_missing,
                 include_ids=include_ids,
+                show_progress=show_progress,
             )
 
     if batch.records:
@@ -102,6 +104,7 @@ def annotate_records_streaming(
             request_interval_seconds=request_interval_seconds,
             retry_missing=retry_missing,
             include_ids=include_ids,
+            show_progress=show_progress,
         )
 
 
@@ -135,16 +138,15 @@ def find_identifier_hit_in_record(
 def flush_annotation_batch(
     *,
     batch: PendingAnnotationBatch,
-    output_stream: TextIO,
-    db_path: str | Path,
+    output_stream,
+    db_path,
     delimiter: str,
     timeout: int,
     request_interval_seconds: float,
     retry_missing: bool,
     include_ids: bool,
+    show_progress: bool,
 ) -> None:
-    """Lookup classification for pending records and write them."""
-
     classification_by_record_index = build_classification_by_record_index(
         records=batch.records,
         db_path=db_path,
@@ -152,6 +154,7 @@ def flush_annotation_batch(
         request_interval_seconds=request_interval_seconds,
         retry_missing=retry_missing,
         include_ids=include_ids,
+        show_progress=show_progress,
     )
 
     for record_index, record in enumerate(batch.records):
@@ -182,6 +185,7 @@ def build_classification_by_record_index(
     request_interval_seconds: float,
     retry_missing: bool,
     include_ids: bool,
+    show_progress: bool,
 ) -> dict[int, ClassificationValues]:
     """Build record index -> classification values."""
 
@@ -216,11 +220,13 @@ def build_classification_by_record_index(
             db_path=db_path,
             input_type=identifier_type,
             values=values,
+            batch_size=len(values),
             timeout=timeout,
             request_interval_seconds=request_interval_seconds,
             retry_missing=retry_missing,
             include_ids=include_ids,
             create_missing_tables=True,
+            show_progress=show_progress,
         )
 
         for local_index, (_, row) in enumerate(dataframe.iterrows()):

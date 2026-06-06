@@ -20,6 +20,7 @@ def annotate_mgf_file(
     retry_missing: bool = False,
     include_ids: bool = False,
     delimiter: str = "=",
+    show_progress: bool = True,
 ) -> None:
     """Annotate MGF file with ClassyFire classification metadata."""
 
@@ -40,6 +41,7 @@ def annotate_mgf_file(
                 request_interval_seconds=request_interval_seconds,
                 retry_missing=retry_missing,
                 include_ids=include_ids,
+                show_progress=show_progress,
             )
 
 

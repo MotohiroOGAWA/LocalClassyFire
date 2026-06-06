@@ -103,6 +103,19 @@ def build_common_lookup_parser() -> argparse.ArgumentParser:
         help="Do not create missing database tables before lookup.",
     )
 
+    parser.add_argument(
+        "--batch-size",
+        type=int,
+        default=100,
+        help="Number of identifiers to classify in one batch. Default: 100.",
+    )
+
+    parser.add_argument(
+        "--no-progress",
+        action="store_true",
+        help="Disable tqdm progress bars.",
+    )
+
     return parser
 
 
@@ -146,11 +159,13 @@ def run_lookup_command(args: argparse.Namespace) -> None:
         db_path=args.db,
         input_type=args.input_type,
         values=values,
+        batch_size=args.batch_size,
         timeout=args.timeout,
         request_interval_seconds=args.request_interval_seconds,
         retry_missing=args.retry_missing,
         include_ids=args.include_ids,
         create_missing_tables=not args.no_create_tables,
+        show_progress=not args.no_progress,
     )
 
     write_dataframe(
