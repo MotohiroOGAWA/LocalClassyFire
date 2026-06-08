@@ -41,6 +41,7 @@ def fetch_classyfire_json(
     url = f"http://classyfire.wishartlab.com/entities/{inchikey}.json"
 
     try:
+        time.sleep(5)  # Sleep to avoid hitting API rate limits
         response = requests.get(url, timeout=timeout)
     except requests.RequestException as error:
         raise ClassyFireRequestError(str(error)) from error
@@ -58,7 +59,6 @@ def fetch_classyfire_json(
         )
     if 'inchikey' in data:
         data['inchikey'] = normalize_inchikey(data['inchikey'])
-    time.sleep(5)  # Sleep to avoid hitting API rate limits
 
     return data
 
