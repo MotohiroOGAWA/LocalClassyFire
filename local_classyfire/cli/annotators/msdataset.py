@@ -2,13 +2,16 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Any
-
+from collections import defaultdict
 import pandas as pd
 
-from local_classyfire.cli.annotators.classification import (
+from msentity import MSDataset
+
+from ..annotators.classification import (
     ClassificationValues,
 )
-from local_classyfire.cli.lookup_runner import run_lookup
+from ..lookup_runner import run_lookup
+from ..progress import progress_iter
 
 
 CLASSIFICATION_COLUMNS = [
@@ -22,7 +25,7 @@ CLASSIFICATION_COLUMNS = [
 
 def annotate_msdataset(
     *,
-    dataset,
+    dataset: MSDataset,
     db_path: str | Path,
     identifier_column: str,
     identifier_type: str,
@@ -32,34 +35,9 @@ def annotate_msdataset(
     retry_missing: bool = False,
     include_ids: bool = False,
     overwrite: bool = True,
+    show_progress: bool = True,
 ):
-    """Add ClassyFire classification columns to an msentity.MSDataset.
-
-    Parameters
-    ----------
-    dataset:
-        msentity.MSDataset object.
-
-    db_path:
-        Path to LocalClassyFire SQLite database.
-
-    identifier_column:
-        Metadata column name containing SMILES or InChIKey.
-
-    identifier_type:
-        Either "smiles" or "inchikey".
-
-    batch_size:
-        Number of identifiers passed to lookup at once.
-
-    overwrite:
-        If False, existing classification columns are not overwritten.
-
-    Returns
-    -------
-    dataset
-        The same MSDataset object with classification columns added.
-    """
+    """Add ClassyFire classification columns to an msentity.MSDataset."""
 
     if batch_size <= 0:
         raise ValueError("batch_size must be greater than 0.")
@@ -69,27 +47,35 @@ def annotate_msdataset(
             "identifier_type must be either 'smiles' or 'inchikey'."
         )
 
-    metadata = dataset.metadata
-
-    if identifier_column not in metadata.columns:
-        raise KeyError(
+    if identifier_column not in dataset.columns:
+         raise KeyError(
             f"identifier_column does not exist in dataset metadata: "
             f"{identifier_column}"
         )
 
-    identifiers = [
-        _to_optional_text(value)
-        for value in metadata[identifier_column].tolist()
-    ]
+    indices_by_identifier: dict[str, list[int]] = defaultdict(list)
 
-    output_columns: dict[str, list[str]] = {
-        column: []
-        for column in CLASSIFICATION_COLUMNS
-    }
+    for index, record in enumerate(dataset):
+        identifier = _to_optional_text(record[identifier_column])
 
-    for start in range(0, len(identifiers), batch_size):
+        if identifier is None:
+            continue
+
+        indices_by_identifier[identifier].append(index)
+
+    unique_identifiers = list(indices_by_identifier.keys())
+
+    batch_starts = list(range(0, len(unique_identifiers), batch_size))
+
+    for start in progress_iter(
+        batch_starts,
+        total=len(batch_starts),
+        desc="Annotating unique identifiers",
+        unit="batch",
+        enabled=show_progress,
+    ):
         end = start + batch_size
-        batch_identifiers = identifiers[start:end]
+        batch_identifiers = unique_identifiers[start:end]
 
         batch_classifications = lookup_classification_batch(
             db_path=db_path,
@@ -101,22 +87,58 @@ def annotate_msdataset(
             include_ids=include_ids,
         )
 
-        for classification in batch_classifications:
-            output_columns["Kingdom"].append(classification.kingdom)
-            output_columns["Superclass"].append(classification.superclass)
-            output_columns["Class"].append(classification.class_name)
-            output_columns["Subclass"].append(classification.subclass)
-            output_columns["DirectParent"].append(classification.direct_parent)
+        for identifier, classification in zip(
+            batch_identifiers,
+            batch_classifications,
+            strict=True,
+        ):
+            indices = indices_by_identifier[identifier]
+            batch_dataset = dataset[indices]
 
-    for column, values in output_columns.items():
-        if not overwrite and column in dataset.columns:
-            continue
+            set_classification_columns_for_view(
+                dataset=batch_dataset,
+                classification=classification,
+                overwrite=overwrite,
+            )
 
-        dataset[column] = values
+    new_columns = [col for col in dataset.columns if col not in CLASSIFICATION_COLUMNS]
+
+    identifier_column_idx = -1
+    for idx, column in enumerate(new_columns):
+        if column == identifier_column:
+            identifier_column_idx = idx
+            break
+    else:
+        raise KeyError(
+            f"identifier_column does not exist in new dataset metadata: "
+            f"{identifier_column}"
+        )
+    for column in reversed(CLASSIFICATION_COLUMNS):
+        new_columns.insert(identifier_column_idx + 1, column)
+    dataset.columns = new_columns
 
     return dataset
 
+def set_classification_columns_for_view(
+    *,
+    dataset: MSDataset,
+    classification: ClassificationValues,
+    overwrite: bool,
+) -> None:
+    values_by_column = {
+        "Kingdom": classification.kingdom,
+        "Superclass": classification.superclass,
+        "Class": classification.class_name,
+        "Subclass": classification.subclass,
+        "DirectParent": classification.direct_parent,
+    }
 
+    for column, value in values_by_column.items():
+        if not overwrite and column in dataset.columns:
+            continue
+
+        dataset[column] = [value] * len(dataset)
+        
 def lookup_classification_batch(
     *,
     db_path: str | Path,
