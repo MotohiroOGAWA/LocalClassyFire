@@ -2,8 +2,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import time
+from datetime import datetime
 
-from sqlalchemy import select
+from sqlalchemy import select, update, func
 from sqlalchemy.orm import Session
 
 from ..models import ClassyFireMissingQuery, ClassyFireQuery
@@ -258,7 +259,7 @@ class ClassyFireQueryRepository:
 
             if isinstance(cached_query, ClassyFireQuery):
                 continue
-
+            
             if isinstance(cached_query, ClassyFireMissingQuery) and not retry_missing:
                 continue
 
@@ -381,6 +382,48 @@ class ClassyFireQueryRepository:
             session=session,
             inchikey_list=unique_inchikeys,
         )
+
+    @classmethod
+    def get_missing_queries_ordered_by_updated_at(
+        cls,
+        session: Session,
+        *,
+        limit: int | None = None,
+        ascending: bool = True,
+    ) -> list[ClassyFireMissingQuery]:
+        """Get missing query records ordered by UpdatedAt.
+
+        Parameters
+        ----------
+        session:
+            SQLAlchemy session.
+
+        limit:
+            Maximum number of records to return.
+            If None, all missing records are returned.
+
+        ascending:
+            If True, old records are returned first.
+        """
+
+        order_column = (
+            ClassyFireMissingQuery.updated_at.asc()
+            if ascending
+            else ClassyFireMissingQuery.updated_at.desc()
+        )
+
+        stmt = (
+            select(ClassyFireMissingQuery)
+            .order_by(
+                order_column,
+                ClassyFireMissingQuery.classyfire_missing_query_id.asc(),
+            )
+        )
+
+        if limit is not None:
+            stmt = stmt.limit(limit)
+
+        return list(session.execute(stmt).scalars().all())
 
     # ------------------------------------------------------------------
     # Private success read methods
@@ -645,22 +688,62 @@ class ClassyFireQueryRepository:
         message: str | None = None,
         flush: bool = True,
     ) -> ClassyFireCachedQuery:
-        """Get cached record or create missing query.
+        """Get cached record or create/update missing query.
 
-        If either successful or missing record already exists, return it.
+        If a successful ClassyFireQuery already exists, return it.
+
+        If a ClassyFireMissingQuery already exists, update reason/message
+        and UpdatedAt so retry attempts are recorded.
+
+        If no record exists, create a new ClassyFireMissingQuery.
         """
+
         normalized = cls.normalize_inchikey(inchikey)
 
         if normalized is None:
             raise ValueError("InChIKey is required.")
 
-        existing = cls.get_query_by_inchikey(
+        success_query = cls._get_success_query_by_inchikey(
             session=session,
             inchikey=normalized,
         )
 
-        if existing is not None:
-            return existing
+        if success_query is not None:
+            return success_query
+
+        missing_query = cls._get_missing_query_by_inchikey(
+            session=session,
+            inchikey=normalized,
+        )
+
+        if missing_query is not None:
+            session.execute(
+                update(ClassyFireMissingQuery)
+                .where(
+                    ClassyFireMissingQuery.classyfire_missing_query_id
+                    == missing_query.classyfire_missing_query_id
+                )
+                .values(
+                    reason=reason,
+                    message=message,
+                    updated_at=func.current_timestamp(),
+                )
+            )
+
+            if flush:
+                session.flush()
+
+            updated_missing_query = cls._get_missing_query_by_inchikey(
+                session=session,
+                inchikey=normalized,
+            )
+
+            if updated_missing_query is None:
+                raise RuntimeError(
+                    f"Failed to update ClassyFireMissingQuery: {normalized}"
+                )
+
+            return updated_missing_query
 
         return cls._create_missing_query(
             session=session,

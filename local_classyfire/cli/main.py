@@ -4,6 +4,7 @@ import argparse
 
 from .commands.annotate import add_annotate_command
 from .commands.lookup import add_lookup_command
+from .commands.refetch_missing import add_refetch_missing_command
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -19,6 +20,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     add_lookup_command(subparsers)
     add_annotate_command(subparsers)
+    add_refetch_missing_command(subparsers)
 
     return parser
 
