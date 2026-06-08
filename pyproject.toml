@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "local-classyfire"
+version = "0.1.0"
+description = "Local SQLite cache and CLI utilities for ClassyFire classification."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "SQLAlchemy==2.0.50",
+    "requests==2.33.1",
+]
+
+[project.scripts]
+local-classyfire = "local_classyfire.cli.main:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["local_classyfire*"]
