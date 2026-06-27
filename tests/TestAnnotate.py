@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from pathlib import Path
 import tempfile
 import unittest
@@ -11,18 +12,22 @@ from local_classyfire.models import (
     ClassyFireClass,
     ClassyFireDirectParent,
     ClassyFireKingdom,
+    ClassyFireMissingQuery,
     ClassyFireQuery,
     ClassyFireSubclass,
     ClassyFireSuperclass,
 )
+from local_classyfire.services.classyfire_client import ClassyFireNotFoundError
 from local_classyfire.services.session import (
     create_session_factory,
     create_sqlite_engine,
     create_tables,
 )
+from sqlalchemy import select
 
 
 TEST_INCHIKEY = "LFQSCWFLJHTTHZ-UHFFFAOYSA-N"
+TEST_MISSING_INCHIKEY = "BSYNRYMUTXBXSQ-UHFFFAOYSA-N"
 
 
 class TestAnnotate(unittest.TestCase):
@@ -105,6 +110,37 @@ class TestAnnotate(unittest.TestCase):
             output_text.index("31.0184 100"),
         )
 
+
+    def test_annotate_retry_missing_updates_missing_updated_at(self) -> None:
+        output_path = self.work_dir / "annotated_missing.msp"
+        old_timestamp = datetime(2001, 1, 1, 0, 0, 0)
+        self._create_missing_query(
+            inchikey=TEST_MISSING_INCHIKEY,
+            updated_at=old_timestamp,
+        )
+
+        with patch(
+            "local_classyfire.services.classyfire_query_repository.fetch_classyfire_result",
+            side_effect=ClassyFireNotFoundError("still missing"),
+        ):
+            annotate_msp_file(
+                input_path=self.fixture_dir / "annotate_missing_input.msp",
+                output_path=output_path,
+                db_path=self.db_path,
+                identifier="inchikey",
+                batch_size=1,
+                request_interval_seconds=0,
+                retry_missing=True,
+                show_progress=False,
+            )
+
+        missing_query = self._get_missing_query(TEST_MISSING_INCHIKEY)
+
+        self.assertIsNotNone(missing_query)
+        self.assertEqual(missing_query.reason, "not_found")
+        self.assertIn("still missing", missing_query.message)
+        self.assertGreater(missing_query.updated_at, old_timestamp)
+
     def _create_classyfire_cache(self, db_path: Path) -> None:
         engine = create_sqlite_engine(db_path)
         create_tables(engine)
@@ -140,6 +176,37 @@ class TestAnnotate(unittest.TestCase):
                 )
             )
             session.commit()
+
+    def _create_missing_query(
+        self,
+        *,
+        inchikey: str,
+        updated_at: datetime,
+    ) -> None:
+        engine = create_sqlite_engine(self.db_path)
+        session_factory = create_session_factory(engine)
+
+        with session_factory() as session:
+            session.add(
+                ClassyFireMissingQuery(
+                    inchikey=inchikey,
+                    reason="old_reason",
+                    message="old_message",
+                    created_at=updated_at,
+                    updated_at=updated_at,
+                )
+            )
+            session.commit()
+
+    def _get_missing_query(self, inchikey: str) -> ClassyFireMissingQuery | None:
+        engine = create_sqlite_engine(self.db_path)
+        session_factory = create_session_factory(engine)
+
+        with session_factory() as session:
+            return session.execute(
+                select(ClassyFireMissingQuery)
+                .where(ClassyFireMissingQuery.inchikey == inchikey)
+            ).scalar_one_or_none()
 
 
 if __name__ == "__main__":
