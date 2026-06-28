@@ -8,6 +8,7 @@ from unittest.mock import patch
 
 from local_classyfire.cli.annotators.mgf import annotate_mgf_file
 from local_classyfire.cli.annotators.msp import annotate_msp_file
+from local_classyfire.cli.main import build_parser
 from local_classyfire.models import (
     ClassyFireClass,
     ClassyFireDirectParent,
@@ -109,6 +110,30 @@ class TestAnnotate(unittest.TestCase):
             output_text.index("DirectParent=Ethanol"),
             output_text.index("31.0184 100"),
         )
+
+
+    def test_annotate_msdataset_accepts_add_tag(self) -> None:
+        parser = build_parser()
+
+        args = parser.parse_args(
+            [
+                "annotate",
+                "msdataset",
+                "--input",
+                "input.msds",
+                "--output",
+                "output.msds",
+                "--db",
+                "classyfire_cache.sqlite",
+                "--identifier-column",
+                "SMILES",
+                "--identifier-type",
+                "smiles",
+                "--add-tag",
+            ]
+        )
+
+        self.assertTrue(args.add_tag)
 
 
     def test_annotate_retry_missing_updates_missing_updated_at(self) -> None:

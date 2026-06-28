@@ -126,6 +126,12 @@ def add_msdataset_arguments(parser: argparse.ArgumentParser) -> None:
         help="Do not overwrite existing classification columns.",
     )
 
+    parser.add_argument(
+        "--add-tag",
+        action="store_true",
+        help="Add the 'ClassyFire' tag to the output MSDataset.",
+    )
+
 def build_common_annotate_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(add_help=False)
 
@@ -206,6 +212,12 @@ def build_common_annotate_parser() -> argparse.ArgumentParser:
     )
 
     parser.add_argument(
+        "--add-tag",
+        action="store_true",
+        help="Add the 'ClassyFire' tag to the output MSDataset.",
+    )
+
+    parser.add_argument(
         "--no-progress",
         action="store_true",
         help="Disable tqdm progress bars.",
@@ -272,6 +284,9 @@ def run_annotate_msdataset_command(args: argparse.Namespace) -> None:
         overwrite=not args.no_overwrite,
     )
 
+    if args.add_tag:
+        annotated_dataset.add_tag("ClassyFire")
+
     write_annotated_msdataset(
         dataset=annotated_dataset,
         output_path=args.output,
@@ -282,21 +297,29 @@ def write_annotated_msdataset(
     *,
     dataset,
     output_path: str,
+    file_type: str | None = None,
 ) -> None:
     path = Path(output_path)
     path.parent.mkdir(parents=True, exist_ok=True)
 
-    suffix = path.suffix.lower()
+    if file_type is None:
+        suffix = path.suffix.lower()
+        if suffix == ".msp":
+            file_type = "msp"
+        elif suffix == ".mgf":
+            file_type = "mgf"
+        elif suffix in [".msds", ".hdf5", ".h5"]:
+            file_type = "msdataset"
 
-    if suffix == ".msp":
+    if file_type == "msp":
         write_msp(dataset, path)
         return
 
-    if suffix == ".mgf":
+    if file_type == "mgf":
         write_mgf(dataset, path)
         return
 
-    if suffix in [".msds", ".hdf5", ".h5"]:
+    if file_type == "msdataset":
         dataset_path = path.with_suffix(".msds")
         dataset.save(dataset_path)
         return
