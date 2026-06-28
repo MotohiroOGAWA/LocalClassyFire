@@ -7,6 +7,9 @@ from local_classyfire.cli.lookup_runner import run_lookup
 from local_classyfire.cli.output import write_dataframe
 
 
+DEFAULT_DB_PATH = "db/classyfire_cache.sqlite"
+
+
 def add_lookup_command(
     subparsers: argparse._SubParsersAction,
 ) -> None:
@@ -53,8 +56,11 @@ def build_common_lookup_parser() -> argparse.ArgumentParser:
 
     parser.add_argument(
         "--db",
-        required=True,
-        help="Path to LocalClassyFire SQLite database.",
+        default=DEFAULT_DB_PATH,
+        help=(
+            "Path to LocalClassyFire SQLite database. "
+            f"Default: {DEFAULT_DB_PATH}."
+        ),
     )
 
     parser.add_argument(

@@ -112,6 +112,20 @@ class TestAnnotate(unittest.TestCase):
         )
 
 
+    def test_lookup_smiles_uses_default_db(self) -> None:
+        parser = build_parser()
+
+        args = parser.parse_args(
+            [
+                "lookup",
+                "smiles",
+                "CCO",
+            ]
+        )
+
+        self.assertEqual(args.db, "db/classyfire_cache.sqlite")
+
+
     def test_annotate_msdataset_accepts_add_tag(self) -> None:
         parser = build_parser()
 
