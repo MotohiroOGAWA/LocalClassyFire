@@ -1,13 +1,16 @@
 from __future__ import annotations
 
 import argparse
+from pathlib import Path
 
 from local_classyfire.cli.io import collect_input_values
 from local_classyfire.cli.lookup_runner import run_lookup
 from local_classyfire.cli.output import write_dataframe
 
 
-DEFAULT_DB_PATH = "db/classyfire_cache.sqlite"
+DEFAULT_DB_PATH = str(
+    Path(__file__).resolve().parents[3] / "db" / "classyfire_cache.sqlite"
+)
 
 
 def add_lookup_command(
