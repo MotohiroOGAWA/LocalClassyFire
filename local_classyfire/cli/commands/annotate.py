@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from msentity import load_ms_dataset, write_mgf, write_msp
+from msentity import Dataset, load
 
 from ..annotators.mgf import annotate_mgf_file
 from ..annotators.msp import annotate_msp_file
@@ -44,7 +44,7 @@ def add_annotate_command(
 
     msdataset_parser = format_subparsers.add_parser(
         "msdataset",
-        help="Annotate msentity.MSDataset file.",
+        help="Annotate msentity.Dataset file.",
     )
 
     add_msdataset_arguments(msdataset_parser)
@@ -269,33 +269,32 @@ def run_annotate_command(args: argparse.Namespace) -> None:
     raise ValueError(f"Unsupported file_type: {args.file_type}")
 
 def run_annotate_msdataset_command(args: argparse.Namespace) -> None:
-    dataset = load_ms_dataset(args.input)
+    with load(args.input) as dataset:
+        annotated_dataset = annotate_msdataset(
+            dataset=dataset,
+            db_path=args.db,
+            identifier_column=args.identifier_column,
+            identifier_type=args.identifier_type,
+            batch_size=args.batch_size,
+            timeout=args.timeout,
+            request_interval_seconds=args.request_interval_seconds,
+            retry_missing=args.retry_missing,
+            include_ids=args.include_ids,
+            overwrite=not args.no_overwrite,
+        )
 
-    annotated_dataset = annotate_msdataset(
-        dataset=dataset,
-        db_path=args.db,
-        identifier_column=args.identifier_column,
-        identifier_type=args.identifier_type,
-        batch_size=args.batch_size,
-        timeout=args.timeout,
-        request_interval_seconds=args.request_interval_seconds,
-        retry_missing=args.retry_missing,
-        include_ids=args.include_ids,
-        overwrite=not args.no_overwrite,
-    )
+        if args.add_tag:
+            annotated_dataset.add_tag("ClassyFire")
 
-    if args.add_tag:
-        annotated_dataset.add_tag("ClassyFire")
-
-    write_annotated_msdataset(
-        dataset=annotated_dataset,
-        output_path=args.output,
-    )
+        write_annotated_msdataset(
+            dataset=annotated_dataset,
+            output_path=args.output,
+        )
 
 
 def write_annotated_msdataset(
     *,
-    dataset,
+    dataset: Dataset,
     output_path: str,
     file_type: str | None = None,
 ) -> None:
@@ -311,24 +310,19 @@ def write_annotated_msdataset(
         elif suffix in [".msds", ".hdf5", ".h5"]:
             file_type = "msdataset"
 
-    if file_type == "msp":
-        write_msp(dataset, path)
-        return
-
-    if file_type == "mgf":
-        write_mgf(dataset, path)
-        return
-
     if file_type == "msdataset":
-        dataset_path = path.with_suffix(".msds")
-        dataset.save(dataset_path)
-        return
+        # Keep the existing .h5/.hdf5 aliases, which produce an .msds file.
+        path = path.with_suffix(".msds")
+        file_type = "msds"
 
-    raise ValueError(
-        "Unsupported MSDataset output format. "
-        "Saved annotated dataset with .msds extension. "
-        "Supported output formats: .msp, .mgf"
-    )
+    if file_type not in {"msds", "msp", "mgf"}:
+        raise ValueError(
+            "Unsupported MSDataset output format. "
+            "Supported output formats: .msds, .hdf5, .h5, .msp, .mgf"
+        )
+
+    dataset.save(path, format=file_type)
+
 
 def resolve_delimiter(
     *,

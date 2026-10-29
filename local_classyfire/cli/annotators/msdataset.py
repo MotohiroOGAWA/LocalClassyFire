@@ -5,7 +5,7 @@ from typing import Any
 from collections import defaultdict
 import pandas as pd
 
-from msentity import MSDataset
+from msentity import Dataset
 
 from ..annotators.classification import (
     ClassificationValues,
@@ -25,7 +25,7 @@ CLASSIFICATION_COLUMNS = [
 
 def annotate_msdataset(
     *,
-    dataset: MSDataset,
+    dataset: Dataset,
     db_path: str | Path,
     identifier_column: str,
     identifier_type: str,
@@ -37,7 +37,7 @@ def annotate_msdataset(
     overwrite: bool = True,
     show_progress: bool = True,
 ):
-    """Add ClassyFire classification columns to an msentity.MSDataset."""
+    """Add ClassyFire classification columns to an msentity.Dataset."""
 
     if batch_size <= 0:
         raise ValueError("batch_size must be greater than 0.")
@@ -48,7 +48,7 @@ def annotate_msdataset(
         )
 
     if identifier_column not in dataset.columns:
-         raise KeyError(
+        raise KeyError(
             f"identifier_column does not exist in dataset metadata: "
             f"{identifier_column}"
         )
@@ -63,6 +63,13 @@ def annotate_msdataset(
 
         indices_by_identifier[identifier].append(index)
 
+    # Build columns on the parent: new columns on a view are not visible there.
+    # Preserve existing values for records without an identifier.
+    column_values = {
+        column: (dataset[column] if column in dataset.columns else [None] * len(dataset))
+        for column in CLASSIFICATION_COLUMNS
+        if overwrite or column not in dataset.columns
+    }
     unique_identifiers = list(indices_by_identifier.keys())
 
     batch_starts = list(range(0, len(unique_identifiers), batch_size))
@@ -92,14 +99,13 @@ def annotate_msdataset(
             batch_classifications,
             strict=True,
         ):
-            indices = indices_by_identifier[identifier]
-            batch_dataset = dataset[indices]
+            for column, value in classification.to_pairs():
+                if column in column_values:
+                    for index in indices_by_identifier[identifier]:
+                        column_values[column][index] = value
 
-            set_classification_columns_for_view(
-                dataset=batch_dataset,
-                classification=classification,
-                overwrite=overwrite,
-            )
+    for column, values in column_values.items():
+        dataset[column] = values
 
     new_columns = [col for col in dataset.columns if col not in CLASSIFICATION_COLUMNS]
 
@@ -119,26 +125,7 @@ def annotate_msdataset(
 
     return dataset
 
-def set_classification_columns_for_view(
-    *,
-    dataset: MSDataset,
-    classification: ClassificationValues,
-    overwrite: bool,
-) -> None:
-    values_by_column = {
-        "Kingdom": classification.kingdom,
-        "Superclass": classification.superclass,
-        "Class": classification.class_name,
-        "Subclass": classification.subclass,
-        "DirectParent": classification.direct_parent,
-    }
 
-    for column, value in values_by_column.items():
-        if not overwrite and column in dataset.columns:
-            continue
-
-        dataset[column] = [value] * len(dataset)
-        
 def lookup_classification_batch(
     *,
     db_path: str | Path,

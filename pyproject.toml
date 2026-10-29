@@ -11,6 +11,10 @@ requires-python = ">=3.10"
 dependencies = [
     "SQLAlchemy==2.0.50",
     "requests==2.33.1",
+    "pandas>=2.2,<3",
+    "tqdm>=4.66,<5",
+    "rdkit==2025.3.6",
+    "msentity @ git+https://github.com/MotohiroOGAWA/msentity.git@bdc7fcd4a9a33c1d95095be711a4fad16faf035e#subdirectory=bindings/python",
 ]
 
 [project.scripts]

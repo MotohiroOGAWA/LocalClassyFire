@@ -25,6 +25,14 @@ from local_classyfire.services.session import (
     create_tables,
 )
 from sqlalchemy import select
+import msentity as ms
+import numpy as np
+
+from local_classyfire.cli.annotators.msdataset import (
+    CLASSIFICATION_COLUMNS,
+    annotate_msdataset,
+)
+from local_classyfire.cli.commands.annotate import write_annotated_msdataset
 
 
 TEST_INCHIKEY = "LFQSCWFLJHTTHZ-UHFFFAOYSA-N"
@@ -182,6 +190,89 @@ class TestAnnotate(unittest.TestCase):
         self.assertEqual(missing_query.reason, "not_found")
         self.assertIn("still missing", missing_query.message)
         self.assertGreater(missing_query.updated_at, old_timestamp)
+
+    def test_msdataset_classifies_duplicates_and_preserves_peaks(self) -> None:
+        with ms.from_peaks([[(31.0, 100.0)], [], [(45.0, 200.0)]]) as dataset:
+            dataset["SMILES"] = ["CCO", None, " CCO "]
+            dataset["Name"] = ["first", "missing", "duplicate"]
+            dataset.description = "test spectra"
+            dataset.set_attribute("source", "test")
+            dataset.set_peak_column("formula", ["CH3O", "C2H5O"])
+            with patch(
+                "local_classyfire.services.classyfire_query_repository.fetch_classyfire_result",
+                side_effect=AssertionError("ClassyFire API should not be called"),
+            ):
+                annotate_msdataset(
+                    dataset=dataset, db_path=self.db_path,
+                    identifier_column="SMILES", identifier_type="smiles",
+                    batch_size=1, show_progress=False,
+                )
+            self.assertEqual(dataset["Kingdom"], ["Organic compounds", None, "Organic compounds"])
+            self.assertEqual(dataset["DirectParent"], ["Ethanol", None, "Ethanol"])
+            self.assertEqual(dataset.columns, ["SMILES", *CLASSIFICATION_COLUMNS, "Name"])
+            dataset.add_tag("ClassyFire")
+            for suffix in ("msds", "msp", "mgf"):
+                with self.subTest(format=suffix):
+                    path = self.work_dir / f"annotated.{suffix}"
+                    write_annotated_msdataset(dataset=dataset, output_path=str(path))
+                    with ms.load(path) as restored:
+                        self.assertEqual(len(restored), 3)
+                        np.testing.assert_array_equal(restored.mz, dataset.mz)
+                        np.testing.assert_array_equal(restored.intensity, dataset.intensity)
+                        self.assertEqual(restored[0]["Kingdom"], "Organic compounds")
+                        self.assertEqual(restored[2]["DirectParent"], "Ethanol")
+                        if suffix == "msds":
+                            self.assertEqual(restored.columns, dataset.columns)
+                            self.assertEqual(restored.tags, ["ClassyFire"])
+                            self.assertEqual(restored.description, dataset.description)
+                            self.assertEqual(restored.attributes, dataset.attributes)
+                            self.assertEqual(restored.peak_column("formula"), ["CH3O", "C2H5O"])
+
+    def test_msdataset_no_overwrite_preserves_existing_columns(self) -> None:
+        with ms.from_peaks([[], []]) as dataset:
+            dataset["SMILES"] = ["CCO", None]
+            dataset["Kingdom"] = ["existing", "missing record"]
+            annotate_msdataset(
+                dataset=dataset, db_path=self.db_path,
+                identifier_column="SMILES", identifier_type="smiles",
+                overwrite=False, show_progress=False,
+            )
+            self.assertEqual(dataset["Kingdom"], ["existing", "missing record"])
+            self.assertEqual(dataset["DirectParent"], ["Ethanol", None])
+
+    def test_msdataset_missing_identifiers_and_empty_dataset(self) -> None:
+        for identifiers in ([None, "", "  "], []):
+            with self.subTest(identifiers=identifiers):
+                with ms.from_peaks([[] for _ in identifiers]) as dataset:
+                    dataset["SMILES"] = identifiers
+                    with patch(
+                        "local_classyfire.cli.annotators.msdataset.lookup_classification_batch",
+                        side_effect=AssertionError("Missing identifiers should not be queried"),
+                    ):
+                        annotate_msdataset(
+                            dataset=dataset, db_path=self.db_path,
+                            identifier_column="SMILES", identifier_type="smiles",
+                            show_progress=False,
+                        )
+                    for column in CLASSIFICATION_COLUMNS:
+                        self.assertIn(column, dataset.columns)
+                        self.assertEqual(dataset[column], [None] * len(identifiers))
+
+    def test_msdataset_cli_adds_tag_and_writes_hdf5_alias(self) -> None:
+        input_path = self.work_dir / "input.msds"
+        with ms.from_peaks([[(31.0, 100.0)]]) as dataset:
+            dataset["SMILES"] = ["CCO"]
+            dataset.save(input_path)
+        output_path = self.work_dir / "nested" / "classified.h5"
+        args = build_parser().parse_args([
+            "annotate", "msdataset", "-i", str(input_path), "-o", str(output_path),
+            "--db", str(self.db_path), "--identifier-column", "SMILES",
+            "--identifier-type", "smiles", "--add-tag",
+        ])
+        args.func(args)
+        with ms.load(output_path.with_suffix(".msds")) as restored:
+            self.assertEqual(restored["DirectParent"], ["Ethanol"])
+            self.assertEqual(restored.tags, ["ClassyFire"])
 
     def _create_classyfire_cache(self, db_path: Path) -> None:
         engine = create_sqlite_engine(db_path)
