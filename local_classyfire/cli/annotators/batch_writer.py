@@ -52,6 +52,7 @@ def annotate_records_streaming(
     output_stream,
     db_path,
     preferred_identifier: str,
+    identifier_column: str | None = None,
     batch_size: int = 100,
     delimiter: str,
     timeout: int = 30,
@@ -76,6 +77,7 @@ def annotate_records_streaming(
             hit=find_identifier_hit_in_record(
                 lines=record_lines,
                 identifier=preferred_identifier,
+                identifier_column=identifier_column,
             ),
         )
 
@@ -112,6 +114,7 @@ def find_identifier_hit_in_record(
     *,
     lines: list[str],
     identifier: str,
+    identifier_column: str | None = None,
 ) -> IdentifierHit | None:
     """Find the requested InChIKey or SMILES line in one record."""
 
@@ -119,6 +122,7 @@ def find_identifier_hit_in_record(
         found = find_identifier_in_line(
             line,
             identifier=identifier,
+            identifier_column=identifier_column,
         )
 
         if found is None:

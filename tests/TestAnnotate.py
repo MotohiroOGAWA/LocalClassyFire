@@ -274,6 +274,65 @@ class TestAnnotate(unittest.TestCase):
             self.assertEqual(restored["DirectParent"], ["Ethanol"])
             self.assertEqual(restored.tags, ["ClassyFire"])
 
+    def test_text_formats_accept_custom_identifier_columns(self) -> None:
+        for file_type in ("msp", "mgf"):
+            for identifier_type, column, value in (
+                ("smiles", "SMILES", "CCO"),
+                ("inchikey", "INCHIKEY", TEST_INCHIKEY),
+            ):
+                with self.subTest(format=file_type, identifier=identifier_type):
+                    delimiter = ": " if file_type == "msp" else "="
+                    original = (self.fixture_dir / f"annotate_input.{file_type}").read_text()
+                    # Keep a conflicting default column to verify the explicit selection.
+                    custom_column = column.lower() + "1"
+                    text = original.replace(
+                        f"{column}{delimiter}{value}",
+                        f"{column}{delimiter}INVALID\n{custom_column}{delimiter}{value}",
+                    )
+                    self.assertNotEqual(text, original)
+                    input_path = self.work_dir / f"custom.{file_type}"
+                    output_path = self.work_dir / f"custom_classified.{file_type}"
+                    input_path.write_text(text)
+                    args = build_parser().parse_args([
+                        "annotate", file_type, "-i", str(input_path), "-o", str(output_path),
+                        "--db", str(self.db_path), "--identifier-type", identifier_type,
+                        "--identifier-column", column + "1", "--no-progress",
+                    ])
+                    with patch(
+                        "local_classyfire.services.classyfire_query_repository.fetch_classyfire_result",
+                        side_effect=AssertionError("Only the selected cached identifier should be queried"),
+                    ):
+                        args.func(args)
+                    output = output_path.read_text()
+                    self.assertIn(f"{custom_column}{delimiter}{value}", output)
+                    self.assertIn(f"DirectParent{delimiter}Ethanol", output)
+                    self.assertIn(f"{column}{delimiter}INVALID", output)
+
+    def test_identifier_arguments_are_shared_by_all_formats(self) -> None:
+        from local_classyfire.cli.commands.annotate import resolve_identifier_column
+
+        for file_type in ("msp", "mgf", "msdataset", "msds"):
+            base = ["annotate", file_type, "-i", "input", "-o", "output", "--db", "cache.sqlite"]
+            with self.subTest(format=file_type):
+                args = build_parser().parse_args(base)
+                self.assertEqual(args.identifier_type, "inchikey")
+                self.assertEqual(resolve_identifier_column(args), "InChIKey")
+                args = build_parser().parse_args(base + ["--identifier-type", "smiles"])
+                self.assertEqual(resolve_identifier_column(args), "SMILES")
+                args = build_parser().parse_args(base + ["--identifier", "smiles", "--identifier-column", "SMILES1"])
+                self.assertEqual(args.identifier_type, "smiles")
+                self.assertEqual(resolve_identifier_column(args), "SMILES1")
+
+    def test_custom_text_column_does_not_fall_back_to_default(self) -> None:
+        from local_classyfire.cli.annotators.text_records import find_identifier_in_line
+
+        self.assertIsNone(find_identifier_in_line(
+            "SMILES: CCO", identifier="smiles", identifier_column="SMILES1",
+        ))
+        self.assertEqual(find_identifier_in_line(
+            "sMiLeS_1: c1ccccc1", identifier="smiles", identifier_column="SMILES1",
+        ), ("smiles", "c1ccccc1"))
+
     def _create_classyfire_cache(self, db_path: Path) -> None:
         engine = create_sqlite_engine(db_path)
         create_tables(engine)

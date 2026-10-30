@@ -47,12 +47,12 @@ def find_identifier_in_line(
     line: str,
     *,
     identifier: str,
+    identifier_column: str | None = None,
 ) -> tuple[str, str] | None:
-    """Find the requested identifier in one metadata line.
+    """Find the selected column without changing identifier value case.
 
-    This function does not fall back to another identifier type.
-    If identifier='inchikey', only InChIKey lines are accepted.
-    If identifier='smiles', only SMILES lines are accepted.
+    Omitted column names default to SMILES or InChIKey for the requested type.
+    There is no fallback to the other identifier type.
     """
 
     parsed = parse_metadata_line(line)
@@ -65,13 +65,13 @@ def find_identifier_in_line(
     if not value:
         return None
 
-    normalized_key = normalize_metadata_key(key)
-
-    if identifier == "inchikey" and normalized_key == "inchikey":
-        return "inchikey", value
-
-    if identifier == "smiles" and normalized_key == "smiles":
-        return "smiles", value
+    if identifier not in {"smiles", "inchikey"}:
+        raise ValueError("identifier must be either 'smiles' or 'inchikey'.")
+    column = identifier_column if identifier_column is not None else (
+        "SMILES" if identifier == "smiles" else "InChIKey"
+    )
+    if normalize_metadata_key(key) == normalize_metadata_key(column):
+        return identifier, value
 
     return None
 

@@ -44,11 +44,36 @@ def add_annotate_command(
 
     msdataset_parser = format_subparsers.add_parser(
         "msdataset",
+        aliases=["msds"],
         help="Annotate msentity.Dataset file.",
     )
 
     add_msdataset_arguments(msdataset_parser)
     msdataset_parser.set_defaults(func=run_annotate_command)
+
+def add_identifier_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--identifier-type", "--identifier",
+        dest="identifier_type",
+        choices=["smiles", "inchikey"],
+        default="inchikey",
+        help="Identifier type. Default: inchikey. --identifier is a compatibility alias.",
+    )
+    parser.add_argument(
+        "--identifier-column",
+        help=(
+            "Metadata column to read. Default: SMILES for smiles, InChIKey for inchikey. "
+            "MSP/MGF match names ignoring case, spaces, underscores and hyphens; "
+            "MSDS requires an exact column name. No fallback to another column."
+        ),
+    )
+
+
+def resolve_identifier_column(args: argparse.Namespace) -> str:
+    if args.identifier_column is not None:
+        return args.identifier_column
+    return "SMILES" if args.identifier_type == "smiles" else "InChIKey"
+
 
 def add_msdataset_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
@@ -71,21 +96,7 @@ def add_msdataset_arguments(parser: argparse.ArgumentParser) -> None:
         help="Path to LocalClassyFire SQLite database.",
     )
 
-    parser.add_argument(
-        "--identifier-column",
-        required=True,
-        help=(
-            "Metadata column containing SMILES or InChIKey. "
-            "Examples: SMILES, InChIKey"
-        ),
-    )
-
-    parser.add_argument(
-        "--identifier-type",
-        choices=["smiles", "inchikey"],
-        required=True,
-        help="Type of identifier stored in --identifier-column.",
-    )
+    add_identifier_arguments(parser)
 
     parser.add_argument(
         "--batch-size",
@@ -155,15 +166,7 @@ def build_common_annotate_parser() -> argparse.ArgumentParser:
         help="Path to LocalClassyFire SQLite database.",
     )
 
-    parser.add_argument(
-        "--identifier",
-        choices=["inchikey", "smiles"],
-        default="inchikey",
-        help=(
-            "Preferred identifier line to use. "
-            "If missing, the other identifier type is also accepted."
-        ),
-    )
+    add_identifier_arguments(parser)
 
     parser.add_argument(
         "--batch-size",
@@ -227,7 +230,7 @@ def build_common_annotate_parser() -> argparse.ArgumentParser:
 
 
 def run_annotate_command(args: argparse.Namespace) -> None:
-    if args.file_type == "msdataset":
+    if args.file_type in {"msdataset", "msds"}:
         run_annotate_msdataset_command(args)
         return
 
@@ -241,7 +244,8 @@ def run_annotate_command(args: argparse.Namespace) -> None:
             input_path=args.input,
             output_path=args.output,
             db_path=args.db,
-            identifier=args.identifier,
+            identifier=args.identifier_type,
+            identifier_column=resolve_identifier_column(args),
             batch_size=args.batch_size,
             timeout=args.timeout,
             request_interval_seconds=args.request_interval_seconds,
@@ -256,7 +260,8 @@ def run_annotate_command(args: argparse.Namespace) -> None:
             input_path=args.input,
             output_path=args.output,
             db_path=args.db,
-            identifier=args.identifier,
+            identifier=args.identifier_type,
+            identifier_column=resolve_identifier_column(args),
             batch_size=args.batch_size,
             timeout=args.timeout,
             request_interval_seconds=args.request_interval_seconds,
@@ -273,7 +278,7 @@ def run_annotate_msdataset_command(args: argparse.Namespace) -> None:
         annotated_dataset = annotate_msdataset(
             dataset=dataset,
             db_path=args.db,
-            identifier_column=args.identifier_column,
+            identifier_column=resolve_identifier_column(args),
             identifier_type=args.identifier_type,
             batch_size=args.batch_size,
             timeout=args.timeout,
